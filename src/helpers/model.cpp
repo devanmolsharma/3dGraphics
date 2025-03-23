@@ -2,7 +2,7 @@
 #include <math.h>
 using namespace std;
 
-struct vertex
+struct Vertex
 {
     float x;
     float y;
@@ -10,7 +10,7 @@ struct vertex
     int id;
 };
 
-struct triangle
+struct Triangle
 {
     int p1;
     int p2;
@@ -18,11 +18,23 @@ struct triangle
     int id;
 };
 
+struct face
+{
+    vector<int> triangles;
+    string color;
+};
+
+struct DrawnPoint
+{
+    string color;
+    float z;
+};
+
 class Model
 {
-    vector<vertex> points;
-    vector<triangle> triangles; // list of point ids that make up a triangle
-    vector<vector<int>> faces;
+    vector<Vertex> points;
+    vector<Triangle> triangles; // list of point ids that make up a Triangle
+    vector<face> faces;
 
 public:
     Model(char *filename)
@@ -34,14 +46,14 @@ public:
     {
         // load a cube
         points = {
-            {0, 0, 0, 0},
-            {1, 0, 0, 1},
-            {1, 1, 0, 2},
-            {0, 1, 0, 3},
-            {0, 0, 1, 4},
-            {1, 0, 1, 5},
-            {1, 1, 1, 6},
-            {0, 1, 1, 7},
+            {-0.5, -0.5, -0.5, 0},
+            {0.5, -0.5, -0.5, 1},
+            {0.5, 0.5, -0.5, 2},
+            {-0.5, 0.5, -0.5, 3},
+            {-0.5, -0.5, 0.5, 4},
+            {0.5, -0.5, 0.5, 5},
+            {0.5, 0.5, 0.5, 6},
+            {-0.5, 0.5, 0.5, 7},
         };
 
         triangles = {
@@ -59,83 +71,110 @@ public:
         };
 
         faces = {
-            {0, 1},  // Bottom face
-            {2, 3},  // Top face
-            {4, 5},  // Front face
-            {6, 7},  // Right face
-            {8, 9},  // Back face
-            {10, 11} // Left face
+            {{0, 1}, "\033[31m█"},  // Bottom face (Red)
+            {{2, 3}, "\033[32m█"},  // Top face (Green)
+            {{4, 5}, "\033[33m█"},  // Front face (Yellow)
+            {{6, 7}, "\033[34m█"},  // Right face (Blue)
+            {{8, 9}, "\033[35m█"},  // Back face (Magenta)
+            {{10, 11}, "\033[36m█"} // Left face (Cyan)
         };
     }
 
-    vector<vertex> getPoints()
+    vector<Vertex> getPoints()
     {
         return points;
     }
 
-    vector<triangle> getTriangles()
+    vector<Triangle> getTriangles()
     {
         return triangles;
     }
 
-    vector<vector<int>> render2d(int width, int height, int size, int posx, int posy, int rotx, int roty, int rotz)
+    void render2d(vector<vector<DrawnPoint>> *screen, int size, int posx, int posy, int rotx, int roty, int rotz)
     {
-        vector<vector<int>> result = vector<vector<int>>(height, vector<int>(width, 0));
-
-        for (auto triangle : triangles)
+        // vector<vector<DrawnPoint>> result = vector<vector<DrawnPoint>>(height, vector<DrawnPoint>(width, {" ", -INFINITY}));
+        int height = screen->size();
+        int width = screen->at(0).size();
+        float aspect = (float)width / (float)height;
+        for (auto face : faces)
         {
-            auto p1 = points[triangle.p1];
-            auto p2 = points[triangle.p2];
-            auto p3 = points[triangle.p3];
-            int face = 0;
-            for (auto f : faces)
+            vector<Triangle> faceTriangles;
+
+            // get all the triangles for a face
+            for (auto triangleId : face.triangles)
             {
-                if (f[0] == triangle.id || f[1] == triangle.id)
-                {
-                    break;
-                }
-                face++;
+                faceTriangles.insert(faceTriangles.begin(), triangles[triangleId]);
             }
 
-            vertex sizedP1, sizedP2, sizedP3;
-            sizedP1.x = p1.x * size + posx + (height / 2);
-            sizedP1.y = p1.y * size + posy + (width / 2);
-            sizedP1.z = p1.z * size;
-            sizedP1.id = p1.id * size;
-            this->rotate(&sizedP1, rotx, roty, rotz);
-
-            sizedP2.x = p2.x * size + posx + (height / 2);
-            sizedP2.y = p2.y * size + posy + (width / 2);
-            sizedP2.z = p2.z * size;
-            sizedP2.id = p2.id * size;
-            this->rotate(&sizedP2, rotx, roty, rotz);
-
-            sizedP3.x = p3.x * size + posx + (height / 2);
-            sizedP3.y = p3.y * size + posy + (width / 2);
-            sizedP3.z = p3.z * size;
-            sizedP3.id = p3.id * size;
-            this->rotate(&sizedP3, rotx, roty, rotz);
-
-            for (int y = 0; y < height; y++)
+            for (auto Triangle : faceTriangles)
             {
-                for (int x = 0; x < width; x++)
+                auto p1 = points[Triangle.p1];
+                auto p2 = points[Triangle.p2];
+                auto p3 = points[Triangle.p3];
+
+                Vertex sizedP1, sizedP2, sizedP3;
+                Vertex rotatedP1 = p1;
+                Vertex rotatedP2 = p2;
+                Vertex rotatedP3 = p3;
+
+                // take all vertices and rotate them accordingly
+                this->rotate(&rotatedP1, rotx, roty, rotz);
+                this->rotate(&rotatedP2, rotx, roty, rotz);
+                this->rotate(&rotatedP3, rotx, roty, rotz);
+
+                // then scale them and center them in the screen
+                sizedP1.x = rotatedP1.x * size + (height / 2) + posx;
+                sizedP1.y = rotatedP1.y * size + (width / 2) + posy;
+                sizedP1.z = rotatedP1.z * size;
+                sizedP1.id = rotatedP1.id * size;
+
+                sizedP2.x = rotatedP2.x * size + (height / 2) + posx;
+                sizedP2.y = rotatedP2.y * size + (width / 2) + posy;
+                sizedP2.z = rotatedP2.z * size;
+                sizedP2.id = rotatedP2.id * size;
+
+                sizedP3.x = rotatedP3.x * size + (height / 2) + posx;
+                sizedP3.y = rotatedP3.y * size + (width / 2) + posy;
+                sizedP3.z = rotatedP3.z * size;
+                sizedP3.id = rotatedP3.id * size;
+
+                // get the normal vector, and the distance from origin
+                auto normal = this->getNormalVector(sizedP1, sizedP2, sizedP3);
+
+                if (normal[0] + normal[1] + normal[2] == 0)
                 {
-                    if (this->isPointInTriangle(
-                            x, y, sizedP1, sizedP2, sizedP3))
+                    continue;
+                }
+
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
                     {
-                        result[y][x] = face;
+                        if (this->isPointInTriangle(
+                                x, y, sizedP1, sizedP2, sizedP3))
+                        {
+                            if (normal[2] == 0)
+                            {
+                                continue;
+                            }
+                            // use the normal vector to get the z-coordinate and if it is greater than the exisiting one at this point x,y, replace it whtn the new point
+                            float z = (normal[3] - normal[0] * x - normal[1] * y) / (normal[2]);
+                            if (z > screen->at(y)[x].z)
+                            {
+                                screen->at(y)[x] = DrawnPoint({face.color,
+                                                               z});
+                            }
+                        }
                     }
                 }
             }
         }
-
-        return result;
     }
 
 private:
-    bool isPointInTriangle(int px, int py, vertex p1, vertex p2, vertex p3)
+    bool isPointInTriangle(int px, int py, Vertex p1, Vertex p2, Vertex p3)
     {
-        // Check if the triangle is degenerate (all points are collinear)
+        // Check if the Triangle is degenerate (all points are collinear)
         int area = (p2.x - p1.x) * (p3.y - p1.y) - (p3.x - p1.x) * (p2.y - p1.y);
         if (area == 0)
             return false;
@@ -146,11 +185,57 @@ private:
         double w2 = ((p3.y - p1.y) * (px - p3.x) + (p1.x - p3.x) * (py - p3.y)) / denominator;
         double w3 = 1 - w1 - w2;
 
-        // The point is inside the triangle if all barycentric coordinates are non-negative
+        // The point is inside the Triangle if all barycentric coordinates are non-negative
         return (w1 >= 0) && (w2 >= 0) && (w3 > 0);
     }
 
-    void rotate(vertex *v, float rotx, float roty, float rotz)
+    vector<float> getNormalVector(Vertex p1, Vertex p2, Vertex p3)
+    {
+        auto AB = vector<float>({p2.x - p1.x,
+                                 p2.y - p1.y,
+                                 p2.z - p1.z});
+
+        auto AC = vector<float>({p3.x - p1.x,
+                                 p3.y - p1.y,
+                                 p3.z - p1.z});
+
+        auto cross = this->crossProduct(
+            AB, AC);
+        float magnitude = getMagnitude(cross);
+
+        if (magnitude == 0)
+        {
+            return vector<float>(
+                {0,
+                 0,
+                 0,
+                 0});
+        }
+        cross[0] /= magnitude;
+        cross[1] /= magnitude;
+        cross[2] /= magnitude;
+
+        auto d = cross[0] * p1.x + cross[1] * p1.y + cross[2] * p1.z;
+        return vector<float>(
+            {cross[0],
+             cross[1],
+             cross[2],
+             d});
+    }
+
+    vector<float> crossProduct(vector<float> a, vector<float> b)
+    {
+        return vector<float>({a[1] * b[2] - a[2] * b[1],
+                              a[2] * b[0] - a[0] * b[2],
+                              a[0] * b[1] - a[1] * b[0]});
+    }
+
+    float getMagnitude(vector<float> v)
+    {
+        return sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    }
+
+    void rotate(Vertex *v, float rotx, float roty, float rotz)
     {
         // Convert degrees to radians
         float radX = rotx * (M_PI / 180.0);
